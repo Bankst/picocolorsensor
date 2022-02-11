@@ -35,6 +35,18 @@ bool read_i2c_data(i2c_inst_t *i2c, uint8_t reg, uint8_t* buffer, uint8_t readLe
     return result == readLen;
 }
 
+uint32_t to_20bit(uint8_t * values) {
+    return ((uint32_t)values[0] |
+            (uint32_t)(values[1] << 8) |
+            (uint32_t)(values[2] << 16)) &
+            0x03FFFF;
+}
+
+uint16_t to_11bit(uint8_t * values) {
+    return ((uint16_t)values[0] |
+            (uint16_t)(values[1] << 8)) &
+            0x7FF;
+}
 
 int main() {
     // Init uart
@@ -118,35 +130,39 @@ int main() {
         read_i2c_data(i2c1, MAIN_STATUS_REGISTER, i2cBuffer, 1);
     }
 
-    unsigned int values[10];
+    uint16_t proxDatas[2];
 
     while (1) {
         absolute_time_t loopTime = make_timeout_time_ms(100);
 
         if (has0) {
-            readValid = read_i2c_data(i2c0, PROXIMITY_DATA_REGISTER, i2cBuffer, 14);
+            // get proximity data
+            readValid = read_i2c_data(i2c0, PROXIMITY_DATA_REGISTER, i2cBuffer, 2);
             if (readValid) {
-                values[4] = ((i2cBuffer[0] & 0xFF) | ((i2cBuffer[1] & 0xFF) << 8)) & 0x7FF;
-                values[3] = ((i2cBuffer[2] & 0xFF) | ((i2cBuffer[3] & 0xFF) << 8) | ((i2cBuffer[4] & 0xFF) << 16)) & 0x03FFFF;
-                values[2] = ((i2cBuffer[5] & 0xFF) | ((i2cBuffer[6] & 0xFF) << 8) | ((i2cBuffer[7] & 0xFF) << 16)) & 0x03FFFF;
-                values[1] = ((i2cBuffer[8] & 0xFF) | ((i2cBuffer[9] & 0xFF) << 8) | ((i2cBuffer[10] & 0xFF) << 16)) & 0x03FFFF;
-                values[0] = ((i2cBuffer[11] & 0xFF) | ((i2cBuffer[12] & 0xFF) << 8) | ((i2cBuffer[13] & 0xFF) << 16)) & 0x03FFFF;
+                proxDatas[0] = to_11bit(i2cBuffer);
             }
         }
 
         if (has1) {
-            readValid = read_i2c_data(i2c1, PROXIMITY_DATA_REGISTER, i2cBuffer, 14);
+            // get proximity data
+            readValid = read_i2c_data(i2c1, PROXIMITY_DATA_REGISTER, i2cBuffer, 2);
             if (readValid) {
-                values[9] = ((i2cBuffer[0] & 0xFF) | ((i2cBuffer[1] & 0xFF) << 8)) & 0x7FF;
-                values[8] = ((i2cBuffer[2] & 0xFF) | ((i2cBuffer[3] & 0xFF) << 8) | ((i2cBuffer[4] & 0xFF) << 16)) & 0x03FFFF;
-                values[7] = ((i2cBuffer[5] & 0xFF) | ((i2cBuffer[6] & 0xFF) << 8) | ((i2cBuffer[7] & 0xFF) << 16)) & 0x03FFFF;
-                values[6] = ((i2cBuffer[8] & 0xFF) | ((i2cBuffer[9] & 0xFF) << 8) | ((i2cBuffer[10] & 0xFF) << 16)) & 0x03FFFF;
-                values[5] = ((i2cBuffer[11] & 0xFF) | ((i2cBuffer[12] & 0xFF) << 8) | ((i2cBuffer[13] & 0xFF) << 16)) & 0x03FFFF;
+                proxDatas[1] = to_11bit(i2cBuffer);
             }
         }
 
-        snprintf(outputBuffer, sizeof(outputBuffer), "%u,%u,%u,%u,%u,%u,%u,%u,%u,%u\n",
-            values[0], values[1], values[2], values[3], values[4], values[5], values[6], values[7], values[8], values[9]);
+        if (has0 && has1) {
+            snprintf(outputBuffer, sizeof(outputBuffer), "Sensor0:\n  ProxData: %u\nSensor1:\n  ProxData: %u\n",
+                proxDatas[0], proxDatas[1]);
+        } else if (has0) {
+            snprintf(outputBuffer, sizeof(outputBuffer), "Sensor0:\n  ProxData: %u\n",
+                proxDatas[0]);
+        } else if (has1) {
+            snprintf(outputBuffer, sizeof(outputBuffer), "Sensor1:\n  ProxData: %u\n",
+                proxDatas[1]);
+        } else {
+            snprintf(outputBuffer, sizeof(outputBuffer), "No Sensors!\n");
+        }
 
         uart_puts(uart0, outputBuffer);
 
